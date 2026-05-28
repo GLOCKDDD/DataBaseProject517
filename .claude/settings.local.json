@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(antiword \"D:/学习资料/数据库课程设计/project/系统需求分析\\(1\\).doc\")",
+      "Bash(antiword -m UTF-8 \"D:/学习资料/数据库课程设计/project/系统需求分析\\(1\\).doc\")",
+      "Bash(python3)",
+      "Bash(D:/MySQL/bin/mysql.exe *)",
+      "Bash(curl *)"
+    ]
+  }
+}
