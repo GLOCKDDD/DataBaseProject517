@@ -238,8 +238,7 @@ CREATE TABLE `room_changes` (
         ON DELETE RESTRICT,
     CONSTRAINT `fk_change_new_room` FOREIGN KEY (`new_room_id`) REFERENCES `rooms` (`room_id`)
         ON UPDATE CASCADE
-        ON DELETE RESTRICT,
-    CONSTRAINT `ck_room_change_room` CHECK (`old_room_id` <> `new_room_id`)
+        ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='换房记录表';
 
 -- ============================================================
@@ -501,8 +500,8 @@ DELIMITER ;
 -- ============================================================
 INSERT INTO `users` (`username`, `password_hash`, `role`, `permissions`, `created_at`)
 VALUES
-    ('admin', '$2a$10$EqKcp1WFKVQIShMPC7B3kuznX9gAZMsVnSNjN0ABNuHVBCpzqABae', 'admin', '*', NOW()),
-    ('front1', '$2b$12$s/oYd4pO0F9rxG7sd643AuC8tK2pjKd0QAzX/2Mf12Q33NzIReHa.', 'frontdesk',
+    ('admin', '$2b$12$yyNBUyxFJJvcJfXMlM8YuOLEeRp8cIVxkyBdOsjpNZK3zdsdDGjpe', 'admin', '*', NOW()),
+    ('front1', '$2b$12$ts7UDOjLcNdcHp86G/BxWeqJ7u84aw1rgXZcmllNF0i7okixgCqka', 'frontdesk',
      '["customer_add","customer_query","reservation_manage","checkin_manage","room_change","billing"]', NOW());
 -- 默认管理员账号: admin / admin123
 -- 默认前台账号: front1 / 123456
