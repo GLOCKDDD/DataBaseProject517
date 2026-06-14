@@ -1,0 +1,5 @@
+# Frontend dependencies and Vite cache
+node_modules/
+
+# Backend build output
+target/

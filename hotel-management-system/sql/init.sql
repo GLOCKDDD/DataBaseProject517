@@ -11,6 +11,13 @@ CREATE DATABASE IF NOT EXISTS hotel_management
 USE hotel_management;
 
 -- ============================================================
+-- 参照完整性设计原则
+-- 1. 主数据（客户、用户、房间、房型）默认不级联删除，避免破坏业务历史。
+-- 2. 明细数据（预订明细、入住宾客）依赖主表存在，可随主表级联删除。
+-- 3. 关键业务状态由触发器联动维护，减少跨表状态不一致。
+-- ============================================================
+
+-- ============================================================
 -- 1. 用户表 Users
 -- 对应数据字典 D1
 -- ============================================================
@@ -23,7 +30,8 @@ CREATE TABLE `users` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `last_login` DATETIME DEFAULT NULL COMMENT '最后登录时间',
     PRIMARY KEY (`user_id`),
-    UNIQUE KEY `uk_username` (`username`)
+    UNIQUE KEY `uk_username` (`username`),
+    CONSTRAINT `ck_user_role` CHECK (`role` IN ('admin', 'frontdesk'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 
 -- ============================================================
@@ -43,7 +51,9 @@ CREATE TABLE `customers` (
     PRIMARY KEY (`customer_id`),
     UNIQUE KEY `uk_id_number` (`id_number`),
     KEY `idx_phone` (`phone`),
-    KEY `idx_name` (`name`)
+    KEY `idx_name` (`name`),
+    CONSTRAINT `ck_customer_membership_level` CHECK (`membership_level` IN ('普通', 'VIP', '贵宾', '金卡')),
+    CONSTRAINT `ck_customer_points` CHECK (`points` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户信息表';
 
 -- ============================================================
@@ -57,7 +67,9 @@ CREATE TABLE `room_types` (
     `capacity` INT NOT NULL DEFAULT 1 COMMENT '最大入住人数',
     `description` VARCHAR(200) DEFAULT NULL COMMENT '类型描述',
     PRIMARY KEY (`type_id`),
-    UNIQUE KEY `uk_type_name` (`type_name`)
+    UNIQUE KEY `uk_type_name` (`type_name`),
+    CONSTRAINT `ck_room_type_base_price` CHECK (`base_price` > 0),
+    CONSTRAINT `ck_room_type_capacity` CHECK (`capacity` > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客房类型表';
 
 -- ============================================================
@@ -76,6 +88,9 @@ CREATE TABLE `rooms` (
     KEY `idx_type_id` (`type_id`),
     KEY `idx_status` (`status`),
     CONSTRAINT `fk_room_type` FOREIGN KEY (`type_id`) REFERENCES `room_types` (`type_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT `ck_room_status` CHECK (`status` IN ('空闲', '占用', '清洁中', '维修中'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客房表';
 
 -- ============================================================
@@ -97,8 +112,15 @@ CREATE TABLE `reservations` (
     KEY `idx_created_by` (`created_by`),
     KEY `idx_status` (`status`),
     KEY `idx_expected_checkin` (`expected_checkin`),
-    CONSTRAINT `fk_reservation_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`customer_id`),
+    CONSTRAINT `fk_reservation_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`customer_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
     CONSTRAINT `fk_reservation_user` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT `ck_reservation_time` CHECK (`expected_checkout` > `expected_checkin`),
+    CONSTRAINT `ck_reservation_guest_count` CHECK (`guest_count` > 0),
+    CONSTRAINT `ck_reservation_status` CHECK (`status` IN ('已确认', '已入住', '已取消', '已完成'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='预订记录表';
 
 -- ============================================================
@@ -111,10 +133,16 @@ CREATE TABLE `reservation_details` (
     `type_id` INT NOT NULL COMMENT '需求房间类型编号，外键引用room_types.type_id',
     `room_count` INT NOT NULL DEFAULT 1 COMMENT '需求间数，必须大于0',
     PRIMARY KEY (`detail_id`),
+    UNIQUE KEY `uk_reservation_type` (`reservation_id`, `type_id`),
     KEY `idx_reservation_id` (`reservation_id`),
     KEY `idx_type_id` (`type_id`),
-    CONSTRAINT `fk_detail_reservation` FOREIGN KEY (`reservation_id`) REFERENCES `reservations` (`reservation_id`),
+    CONSTRAINT `fk_detail_reservation` FOREIGN KEY (`reservation_id`) REFERENCES `reservations` (`reservation_id`)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
     CONSTRAINT `fk_detail_room_type` FOREIGN KEY (`type_id`) REFERENCES `room_types` (`type_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT `ck_reservation_detail_room_count` CHECK (`room_count` > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='预订需求明细表';
 
 -- ============================================================
@@ -132,8 +160,14 @@ CREATE TABLE `checkins` (
     KEY `idx_reservation_id` (`reservation_id`),
     KEY `idx_room_id` (`room_id`),
     KEY `idx_status` (`status`),
-    CONSTRAINT `fk_checkin_reservation` FOREIGN KEY (`reservation_id`) REFERENCES `reservations` (`reservation_id`),
+    CONSTRAINT `fk_checkin_reservation` FOREIGN KEY (`reservation_id`) REFERENCES `reservations` (`reservation_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
     CONSTRAINT `fk_checkin_room` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`room_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT `ck_checkin_time` CHECK (`checkout_time` IS NULL OR `checkout_time` >= `checkin_time`),
+    CONSTRAINT `ck_checkin_status` CHECK (`status` IN ('入住中', '已退房', '已换房'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='入住登记表';
 
 -- ============================================================
@@ -146,10 +180,16 @@ CREATE TABLE `checkin_guests` (
     `customer_id` INT NOT NULL COMMENT '宾客客户编号，外键引用customers.customer_id',
     `is_primary` TINYINT NOT NULL DEFAULT 0 COMMENT '是否主要入住人：0-否，1-是',
     PRIMARY KEY (`guest_id`),
+    UNIQUE KEY `uk_checkin_customer` (`checkin_id`, `customer_id`),
     KEY `idx_checkin_id` (`checkin_id`),
     KEY `idx_customer_id` (`customer_id`),
-    CONSTRAINT `fk_guest_checkin` FOREIGN KEY (`checkin_id`) REFERENCES `checkins` (`checkin_id`),
+    CONSTRAINT `fk_guest_checkin` FOREIGN KEY (`checkin_id`) REFERENCES `checkins` (`checkin_id`)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
     CONSTRAINT `fk_guest_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`customer_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT `ck_guest_is_primary` CHECK (`is_primary` IN (0, 1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='入住宾客明细表';
 
 -- ============================================================
@@ -166,8 +206,13 @@ CREATE TABLE `bills` (
     PRIMARY KEY (`bill_id`),
     UNIQUE KEY `uk_checkin_id` (`checkin_id`),
     KEY `idx_created_by` (`created_by`),
-    CONSTRAINT `fk_bill_checkin` FOREIGN KEY (`checkin_id`) REFERENCES `checkins` (`checkin_id`),
+    CONSTRAINT `fk_bill_checkin` FOREIGN KEY (`checkin_id`) REFERENCES `checkins` (`checkin_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
     CONSTRAINT `fk_bill_user` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT `ck_bill_total_amount` CHECK (`total_amount` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='结账记录表';
 
 -- ============================================================
@@ -185,21 +230,280 @@ CREATE TABLE `room_changes` (
     KEY `idx_checkin_id` (`checkin_id`),
     KEY `idx_old_room_id` (`old_room_id`),
     KEY `idx_new_room_id` (`new_room_id`),
-    CONSTRAINT `fk_change_checkin` FOREIGN KEY (`checkin_id`) REFERENCES `checkins` (`checkin_id`),
-    CONSTRAINT `fk_change_old_room` FOREIGN KEY (`old_room_id`) REFERENCES `rooms` (`room_id`),
+    CONSTRAINT `fk_change_checkin` FOREIGN KEY (`checkin_id`) REFERENCES `checkins` (`checkin_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT `fk_change_old_room` FOREIGN KEY (`old_room_id`) REFERENCES `rooms` (`room_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
     CONSTRAINT `fk_change_new_room` FOREIGN KEY (`new_room_id`) REFERENCES `rooms` (`room_id`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT `ck_room_change_room` CHECK (`old_room_id` <> `new_room_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='换房记录表';
 
 -- ============================================================
--- 初始化数据：默认管理员账号
--- 密码为 admin123 的 BCrypt 加盐哈希值
+-- 触发器：删除保护、状态联动、关键属性修改影响
+-- ============================================================
+DELIMITER $$
+
+-- 客户已有业务历史时不建议物理删除；正在入住时更必须禁止删除。
+CREATE TRIGGER `trg_customer_before_delete`
+BEFORE DELETE ON `customers`
+FOR EACH ROW
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM `checkin_guests` cg
+        JOIN `checkins` c ON c.`checkin_id` = cg.`checkin_id`
+        WHERE cg.`customer_id` = OLD.`customer_id`
+          AND c.`status` = '入住中'
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '客户当前正在入住，不能删除';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM `reservations` WHERE `customer_id` = OLD.`customer_id`)
+       OR EXISTS (SELECT 1 FROM `checkin_guests` WHERE `customer_id` = OLD.`customer_id`) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '客户已有预订或入住历史，建议改为软删除/停用，不能物理删除';
+    END IF;
+END$$
+
+-- 用户产生过业务记录后应保留审计链路。
+CREATE TRIGGER `trg_user_before_delete`
+BEFORE DELETE ON `users`
+FOR EACH ROW
+BEGIN
+    IF EXISTS (SELECT 1 FROM `reservations` WHERE `created_by` = OLD.`user_id`)
+       OR EXISTS (SELECT 1 FROM `bills` WHERE `created_by` = OLD.`user_id`) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '用户已有业务操作记录，不能物理删除';
+    END IF;
+END$$
+
+-- 房型被房间或预订明细引用时不能删除；降低容量不能影响当前正在入住的客人。
+CREATE TRIGGER `trg_room_type_before_delete`
+BEFORE DELETE ON `room_types`
+FOR EACH ROW
+BEGIN
+    IF EXISTS (SELECT 1 FROM `rooms` WHERE `type_id` = OLD.`type_id`)
+       OR EXISTS (SELECT 1 FROM `reservation_details` WHERE `type_id` = OLD.`type_id`) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '房型已被房间或预订明细引用，不能删除';
+    END IF;
+END$$
+
+CREATE TRIGGER `trg_room_type_before_update`
+BEFORE UPDATE ON `room_types`
+FOR EACH ROW
+BEGIN
+    IF NEW.`capacity` < OLD.`capacity`
+       AND EXISTS (
+           SELECT 1
+           FROM `checkins` c
+           JOIN `rooms` r ON r.`room_id` = c.`room_id`
+           JOIN `checkin_guests` cg ON cg.`checkin_id` = c.`checkin_id`
+           WHERE r.`type_id` = OLD.`type_id`
+             AND c.`status` = '入住中'
+           GROUP BY c.`checkin_id`
+           HAVING COUNT(*) > NEW.`capacity`
+       ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '新容量小于当前入住人数，不能修改房型容量';
+    END IF;
+END$$
+
+-- 房间已有入住或换房历史时不物理删除。
+CREATE TRIGGER `trg_room_before_delete`
+BEFORE DELETE ON `rooms`
+FOR EACH ROW
+BEGIN
+    IF EXISTS (SELECT 1 FROM `checkins` WHERE `room_id` = OLD.`room_id` AND `status` = '入住中') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '房间当前正在入住，不能删除';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM `checkins` WHERE `room_id` = OLD.`room_id`)
+       OR EXISTS (SELECT 1 FROM `room_changes` WHERE `old_room_id` = OLD.`room_id` OR `new_room_id` = OLD.`room_id`) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '房间已有入住或换房历史，不能物理删除';
+    END IF;
+END$$
+
+-- 已入住或已完成的预订不能删除；关键时间字段不能在入住后继续修改。
+CREATE TRIGGER `trg_reservation_before_delete`
+BEFORE DELETE ON `reservations`
+FOR EACH ROW
+BEGIN
+    IF OLD.`status` IN ('已入住', '已完成')
+       OR EXISTS (SELECT 1 FROM `checkins` WHERE `reservation_id` = OLD.`reservation_id`) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '预订已产生入住记录，不能删除';
+    END IF;
+END$$
+
+CREATE TRIGGER `trg_reservation_before_update`
+BEFORE UPDATE ON `reservations`
+FOR EACH ROW
+BEGIN
+    IF OLD.`status` IN ('已入住', '已完成')
+       AND (NEW.`expected_checkin` <> OLD.`expected_checkin`
+            OR NEW.`expected_checkout` <> OLD.`expected_checkout`
+            OR NEW.`guest_count` <> OLD.`guest_count`) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '预订已入住或完成，不能修改预计时间和人数';
+    END IF;
+
+    IF OLD.`status` = '已完成' AND NEW.`status` <> '已完成' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '已完成预订不能回退状态';
+    END IF;
+END$$
+
+CREATE TRIGGER `trg_checkin_before_update`
+BEFORE UPDATE ON `checkins`
+FOR EACH ROW
+BEGIN
+    IF OLD.`status` = '已退房' AND NEW.`status` <> '已退房' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '已退房入住记录不能恢复为其他状态';
+    END IF;
+
+    IF NEW.`room_id` <> OLD.`room_id` THEN
+        IF (
+            SELECT COUNT(*)
+            FROM `checkin_guests`
+            WHERE `checkin_id` = OLD.`checkin_id`
+        ) > (
+            SELECT rt.`capacity`
+            FROM `rooms` r
+            JOIN `room_types` rt ON rt.`type_id` = r.`type_id`
+            WHERE r.`room_id` = NEW.`room_id`
+        ) THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = '新房间容量不足，不能换房';
+        END IF;
+    END IF;
+
+    IF NEW.`status` = '已退房' AND NEW.`checkout_time` IS NULL THEN
+        SET NEW.`checkout_time` = CURRENT_TIMESTAMP;
+    END IF;
+END$$
+
+CREATE TRIGGER `trg_checkin_before_delete`
+BEFORE DELETE ON `checkins`
+FOR EACH ROW
+BEGIN
+    IF OLD.`status` = '入住中' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '入住中记录不能删除，请先退房';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM `bills` WHERE `checkin_id` = OLD.`checkin_id`)
+       OR EXISTS (SELECT 1 FROM `room_changes` WHERE `checkin_id` = OLD.`checkin_id`) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '入住记录已有账单或换房历史，不能删除';
+    END IF;
+END$$
+
+-- 入住宾客变更会影响房间容量约束和主要入住人唯一性。
+CREATE TRIGGER `trg_checkin_guest_before_insert`
+BEFORE INSERT ON `checkin_guests`
+FOR EACH ROW
+BEGIN
+    IF NEW.`is_primary` = 1
+       AND EXISTS (
+           SELECT 1
+           FROM `checkin_guests`
+           WHERE `checkin_id` = NEW.`checkin_id`
+             AND `is_primary` = 1
+       ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '同一入住记录只能有一个主要入住人';
+    END IF;
+
+    IF (
+        SELECT COUNT(*) + 1
+        FROM `checkin_guests`
+        WHERE `checkin_id` = NEW.`checkin_id`
+    ) > (
+        SELECT rt.`capacity`
+        FROM `checkins` c
+        JOIN `rooms` r ON r.`room_id` = c.`room_id`
+        JOIN `room_types` rt ON rt.`type_id` = r.`type_id`
+        WHERE c.`checkin_id` = NEW.`checkin_id`
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '入住人数超过房间容量';
+    END IF;
+END$$
+
+CREATE TRIGGER `trg_checkin_guest_before_update`
+BEFORE UPDATE ON `checkin_guests`
+FOR EACH ROW
+BEGIN
+    IF NEW.`is_primary` = 1
+       AND EXISTS (
+           SELECT 1
+           FROM `checkin_guests`
+           WHERE `checkin_id` = NEW.`checkin_id`
+             AND `guest_id` <> OLD.`guest_id`
+             AND `is_primary` = 1
+       ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '同一入住记录只能有一个主要入住人';
+    END IF;
+END$$
+
+-- 账单生成后自动完成退房，并保护账单不可物理删除。
+CREATE TRIGGER `trg_bill_before_insert`
+BEFORE INSERT ON `bills`
+FOR EACH ROW
+BEGIN
+    IF (SELECT `status` FROM `checkins` WHERE `checkin_id` = NEW.`checkin_id`) NOT IN ('入住中', '已换房') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '只有未结账入住记录才能生成账单';
+    END IF;
+END$$
+
+CREATE TRIGGER `trg_bill_before_update`
+BEFORE UPDATE ON `bills`
+FOR EACH ROW
+BEGIN
+    IF NEW.`checkin_id` <> OLD.`checkin_id` THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '账单不能改绑入住记录';
+    END IF;
+END$$
+
+CREATE TRIGGER `trg_bill_before_delete`
+BEFORE DELETE ON `bills`
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = '账单属于财务历史，不能物理删除';
+END$$
+
+CREATE TRIGGER `trg_room_change_before_delete`
+BEFORE DELETE ON `room_changes`
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = '换房记录属于业务历史，不能物理删除';
+END$$
+
+DELIMITER ;
+
+-- ============================================================
+-- 初始化数据：默认管理员与前台账号
+-- 密码均使用 BCrypt 加盐哈希值
 -- ============================================================
 INSERT INTO `users` (`username`, `password_hash`, `role`, `permissions`, `created_at`)
-VALUES ('admin', '$2a$10$EqKcp1WFKVQIShMPC7B3kuznX9gAZMsVnSNjN0ABNuHVBCpzqABae', 'admin', '*', NOW());
+VALUES
+    ('admin', '$2a$10$EqKcp1WFKVQIShMPC7B3kuznX9gAZMsVnSNjN0ABNuHVBCpzqABae', 'admin', '*', NOW()),
+    ('front1', '$2b$12$s/oYd4pO0F9rxG7sd643AuC8tK2pjKd0QAzX/2Mf12Q33NzIReHa.', 'frontdesk',
+     '["customer_add","customer_query","reservation_manage","checkin_manage","room_change","billing"]', NOW());
 -- 默认管理员账号: admin / admin123
-
--- 默认前台账号（密码与 admin 相同：admin123，首次登录后请修改）
-INSERT INTO `users` (`username`, `password_hash`, `role`, `permissions`, `created_at`)
-VALUES ('front1', '$2a$10$EqKcp1WFKVQIShMPC7B3kuznX9gAZMsVnSNjN0ABNuHVBCpzqABae', 'frontdesk',
-        '["customer_add","reservation_manage","checkin_manage","room_change","billing","customer_query"]', NOW());
--- 默认前台账号: front1 / admin123
+-- 默认前台账号: front1 / 123456
+-- 首次登录后请立即修改密码
