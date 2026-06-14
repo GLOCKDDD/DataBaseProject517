@@ -56,7 +56,7 @@
             <el-popconfirm
               title="确认删除该用户？"
               @confirm="handleDelete(row.user_id)"
-              v-if="row.user_id !== authStore.currentUser?.user_id"
+              v-if="row.user_id !== authStore.currentUser?.userId"
             >
               <template #reference>
                 <el-button type="danger" link size="small">删除</el-button>
@@ -78,8 +78,8 @@
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" placeholder="请输入用户名" />
         </el-form-item>
-        <el-form-item label="密码" prop="password_hash" v-if="!isEdit">
-          <el-input v-model="form.password_hash" type="password" placeholder="请输入密码" show-password />
+        <el-form-item label="密码" prop="password" v-if="!isEdit">
+          <el-input v-model="form.password" type="password" placeholder="请输入密码" show-password />
         </el-form-item>
         <el-form-item label="身份" prop="role">
           <el-select v-model="form.role" placeholder="请选择身份">
@@ -134,13 +134,13 @@ const selectedPerms = ref([])
 
 const form = reactive({
   username: '',
-  password_hash: '',
+  password: '',
   role: 'frontdesk'
 })
 
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password_hash: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
   role: [{ required: true, message: '请选择身份', trigger: 'change' }]
 }
 
@@ -187,7 +187,7 @@ function openDialog(user = null) {
   isEdit.value = !!user
   editId.value = user?.user_id || null
   form.username = user?.username || ''
-  form.password_hash = ''
+  form.password = ''
   form.role = user?.role || 'frontdesk'
   dialogVisible.value = true
 }

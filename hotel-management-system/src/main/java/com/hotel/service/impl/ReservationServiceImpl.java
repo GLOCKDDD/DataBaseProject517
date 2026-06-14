@@ -14,6 +14,10 @@ import com.hotel.mapper.ReservationMapper;
 import com.hotel.mapper.RoomMapper;
 import com.hotel.mapper.RoomTypeMapper;
 import com.hotel.service.ReservationService;
+import com.hotel.entity.Customer;
+import com.hotel.entity.RoomType;
+import com.hotel.entity.User;
+import com.hotel.mapper.UserMapper;
 import com.hotel.util.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -43,6 +47,9 @@ public class ReservationServiceImpl extends ServiceImpl<ReservationMapper, Reser
 
     @Autowired
     private RoomTypeMapper roomTypeMapper;
+
+    @Autowired
+    private UserMapper userMapper;
 
     /**
      * 创建预订（含需求明细校验）
@@ -131,10 +138,10 @@ public class ReservationServiceImpl extends ServiceImpl<ReservationMapper, Reser
     }
 
     /**
-     * 分页查询预订记录
+     * 分页查询预订记录（含客户名、操作员名、需求明细房型名）
      */
     @Override
-    public IPage<Reservation> searchReservations(String status, Integer customerId, int pageNum, int pageSize) {
+    public IPage<Map<String, Object>> searchReservations(String status, Integer customerId, int pageNum, int pageSize) {
         Page<Reservation> page = new Page<>(pageNum, pageSize);
         LambdaQueryWrapper<Reservation> wrapper = new LambdaQueryWrapper<>();
         if (status != null && !status.isEmpty()) {
@@ -144,7 +151,51 @@ public class ReservationServiceImpl extends ServiceImpl<ReservationMapper, Reser
             wrapper.eq(Reservation::getCustomerId, customerId);
         }
         wrapper.orderByDesc(Reservation::getCreatedAt);
-        return reservationMapper.selectPage(page, wrapper);
+        IPage<Reservation> rawPage = reservationMapper.selectPage(page, wrapper);
+
+        // Convert to enriched records
+        Page<Map<String, Object>> resultPage = new Page<>(rawPage.getCurrent(), rawPage.getSize(), rawPage.getTotal());
+        List<Map<String, Object>> records = new ArrayList<>();
+        for (Reservation r : rawPage.getRecords()) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("reservation_id", r.getReservationId());
+            item.put("customer_id", r.getCustomerId());
+            item.put("expected_checkin", r.getExpectedCheckin());
+            item.put("expected_checkout", r.getExpectedCheckout());
+            item.put("guest_count", r.getGuestCount());
+            item.put("status", r.getStatus());
+            item.put("created_at", r.getCreatedAt());
+            item.put("remark", r.getRemark());
+
+            // Enrich customer name
+            Customer customer = customerMapper.selectById(r.getCustomerId());
+            item.put("customer_name", customer != null ? customer.getName() : "");
+
+            // Enrich operator name
+            User operator = r.getCreatedBy() != null ? userMapper.selectById(r.getCreatedBy()) : null;
+            item.put("created_by_name", operator != null ? operator.getUsername() : "");
+            item.put("created_by", r.getCreatedBy());
+
+            // Enrich details with type_name
+            LambdaQueryWrapper<ReservationDetail> dw = new LambdaQueryWrapper<>();
+            dw.eq(ReservationDetail::getReservationId, r.getReservationId());
+            List<ReservationDetail> detailList = reservationDetailMapper.selectList(dw);
+            List<Map<String, Object>> details = new ArrayList<>();
+            for (ReservationDetail d : detailList) {
+                Map<String, Object> dm = new HashMap<>();
+                dm.put("detail_id", d.getDetailId());
+                dm.put("type_id", d.getTypeId());
+                dm.put("room_count", d.getRoomCount());
+                RoomType rt = roomTypeMapper.selectById(d.getTypeId());
+                dm.put("type_name", rt != null ? rt.getTypeName() : "");
+                details.add(dm);
+            }
+            item.put("details", details);
+
+            records.add(item);
+        }
+        resultPage.setRecords(records);
+        return resultPage;
     }
 
     /**

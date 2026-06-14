@@ -30,7 +30,7 @@
             <el-option
               v-for="c in activeCheckins"
               :key="c.checkin_id"
-              :label="`#${c.checkin_id} - 房间${c.room_number} (${c.guest_name})`"
+              :label="`#${c.checkin_id} - 房间${c.room_number} (${c.guests?.find(g=>g.is_primary)?.customer_name || c.guests?.[0]?.customer_name || '未知'})`"
               :value="c.checkin_id"
             />
           </el-select>
@@ -56,7 +56,7 @@
             <el-option
               v-for="r in newRooms"
               :key="r.room_id"
-              :label="`${r.room_number} (${r.floor || ''})`"
+              :label="r.floor ? `${r.room_number} (${r.floor})` : r.room_number"
               :value="r.room_id"
             />
           </el-select>
@@ -80,7 +80,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { roomChangeService, roomTypeService, roomService, checkinService } from '@/api/services'
-import { db } from '@/api/mock'
 import { formatDateTime } from '@/utils/helpers'
 import { ElMessage } from 'element-plus'
 
@@ -128,9 +127,9 @@ function onCheckinChange() {
   form.new_room_id = null
 }
 
-function loadNewRooms() {
+async function loadNewRooms() {
   if (newTypeId.value) {
-    newRooms.value = roomService.getAvailableRooms(newTypeId.value)
+    newRooms.value = await roomService.getAvailableRooms(newTypeId.value)
   } else {
     newRooms.value = []
   }
@@ -152,10 +151,12 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null')
     await roomChangeService.create({
       checkin_id: form.checkin_id,
       new_room_id: form.new_room_id,
-      reason: form.reason
+      reason: form.reason,
+      created_by: currentUser?.userId ?? 1
     })
     ElMessage.success('换房办理成功')
     dialogVisible.value = false

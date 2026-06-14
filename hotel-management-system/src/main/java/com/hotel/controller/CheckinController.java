@@ -67,4 +67,13 @@ public class CheckinController {
         List<CheckinGuest> guests = checkinService.getGuests(checkinId);
         return Result.success(guests);
     }
+
+    /**
+     * 查询富化入住列表（含房间号、房型、宾客信息）
+     * GET /api/checkin/listfull?status=入住中
+     */
+    @GetMapping("/listfull")
+    public Result<?> listCheckinsFull(@RequestParam(required = false) String status) {
+        return Result.success(checkinService.listCheckinsFull(status));
+    }
 }

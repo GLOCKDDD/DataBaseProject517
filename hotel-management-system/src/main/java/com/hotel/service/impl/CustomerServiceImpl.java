@@ -4,15 +4,19 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.hotel.entity.Customer;
+import com.hotel.entity.*;
 import com.hotel.entity.dto.CustomerDTO;
-import com.hotel.mapper.CustomerMapper;
+import com.hotel.mapper.*;
 import com.hotel.service.CustomerService;
 import com.hotel.util.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 客户服务实现类
@@ -23,6 +27,15 @@ public class CustomerServiceImpl extends ServiceImpl<CustomerMapper, Customer> i
 
     @Autowired
     private CustomerMapper customerMapper;
+
+    @Autowired
+    private CheckinGuestMapper checkinGuestMapper;
+
+    @Autowired
+    private CheckinMapper checkinMapper;
+
+    @Autowired
+    private RoomMapper roomMapper;
 
     /**
      * 录入/更新客户信息
@@ -53,6 +66,12 @@ public class CustomerServiceImpl extends ServiceImpl<CustomerMapper, Customer> i
             existing.setName(dto.getName());
             existing.setAddress(dto.getAddress());
             existing.setPhone(dto.getPhone());
+            if (dto.getMembershipLevel() != null) {
+                existing.setMembershipLevel(dto.getMembershipLevel());
+            }
+            if (dto.getPoints() != null) {
+                existing.setPoints(dto.getPoints());
+            }
             existing.setUpdatedAt(LocalDateTime.now());
             customerMapper.updateById(existing);
             return existing;
@@ -120,5 +139,32 @@ public class CustomerServiceImpl extends ServiceImpl<CustomerMapper, Customer> i
         }
         customer.setUpdatedAt(LocalDateTime.now());
         customerMapper.updateById(customer);
+    }
+
+    @Override
+    public List<Map<String, Object>> getCustomerCheckins(Integer customerId) {
+        LambdaQueryWrapper<CheckinGuest> gw = new LambdaQueryWrapper<>();
+        gw.eq(CheckinGuest::getCustomerId, customerId);
+        List<CheckinGuest> guests = checkinGuestMapper.selectList(gw);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (CheckinGuest guest : guests) {
+            Checkin checkin = checkinMapper.selectById(guest.getCheckinId());
+            if (checkin == null) continue;
+            Map<String, Object> item = new HashMap<>();
+            item.put("checkin_id", checkin.getCheckinId());
+            item.put("checkin_time", checkin.getCheckinTime());
+            item.put("checkout_time", checkin.getCheckoutTime());
+            item.put("status", checkin.getStatus());
+            Room room = roomMapper.selectById(checkin.getRoomId());
+            item.put("room_number", room != null ? room.getRoomNumber() : "未知");
+            result.add(item);
+        }
+        result.sort((a, b) -> {
+            java.time.LocalDateTime ta = (java.time.LocalDateTime) a.get("checkin_time");
+            java.time.LocalDateTime tb = (java.time.LocalDateTime) b.get("checkin_time");
+            if (ta == null || tb == null) return 0;
+            return tb.compareTo(ta);
+        });
+        return result;
     }
 }

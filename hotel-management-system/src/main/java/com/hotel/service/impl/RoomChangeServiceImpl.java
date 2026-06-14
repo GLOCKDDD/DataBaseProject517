@@ -17,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
  * 换房服务实现类
@@ -109,5 +112,28 @@ public class RoomChangeServiceImpl extends ServiceImpl<RoomChangeMapper, RoomCha
         wrapper.eq(RoomChange::getCheckinId, checkinId)
                 .orderByDesc(RoomChange::getChangeTime);
         return baseMapper.selectList(wrapper);
+    }
+
+    @Override
+    public List<Map<String, Object>> listAllChanges() {
+        LambdaQueryWrapper<RoomChange> wrapper = new LambdaQueryWrapper<>();
+        wrapper.orderByDesc(RoomChange::getChangeTime);
+        List<RoomChange> changes = baseMapper.selectList(wrapper);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (RoomChange c : changes) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("change_id", c.getChangeId());
+            item.put("checkin_id", c.getCheckinId());
+            item.put("old_room_id", c.getOldRoomId());
+            item.put("new_room_id", c.getNewRoomId());
+            item.put("change_time", c.getChangeTime());
+            item.put("reason", c.getReason());
+            Room oldRoom = roomMapper.selectById(c.getOldRoomId());
+            Room newRoom = roomMapper.selectById(c.getNewRoomId());
+            item.put("old_room_number", oldRoom != null ? oldRoom.getRoomNumber() : "未知");
+            item.put("new_room_number", newRoom != null ? newRoom.getRoomNumber() : "未知");
+            result.add(item);
+        }
+        return result;
     }
 }

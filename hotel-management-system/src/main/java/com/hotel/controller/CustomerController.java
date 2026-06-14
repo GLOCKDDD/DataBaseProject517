@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 客户信息管理控制器
@@ -91,5 +93,15 @@ public class CustomerController {
     public Result<?> deleteCustomer(@PathVariable Integer customerId) {
         customerService.removeById(customerId);
         return Result.success("客户删除成功", null);
+    }
+
+    /**
+     * 查询客户历史入住记录
+     * GET /api/customer/{customerId}/checkins
+     */
+    @GetMapping("/{customerId}/checkins")
+    public Result<?> getCustomerCheckins(@PathVariable Integer customerId) {
+        List<Map<String, Object>> checkins = customerService.getCustomerCheckins(customerId);
+        return Result.success(checkins);
     }
 }

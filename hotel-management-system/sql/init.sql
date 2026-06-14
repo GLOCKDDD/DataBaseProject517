@@ -197,4 +197,9 @@ CREATE TABLE `room_changes` (
 INSERT INTO `users` (`username`, `password_hash`, `role`, `permissions`, `created_at`)
 VALUES ('admin', '$2a$10$EqKcp1WFKVQIShMPC7B3kuznX9gAZMsVnSNjN0ABNuHVBCpzqABae', 'admin', '*', NOW());
 -- 默认管理员账号: admin / admin123
--- 首次登录后请立即修改密码
+
+-- 默认前台账号（密码与 admin 相同：admin123，首次登录后请修改）
+INSERT INTO `users` (`username`, `password_hash`, `role`, `permissions`, `created_at`)
+VALUES ('front1', '$2a$10$EqKcp1WFKVQIShMPC7B3kuznX9gAZMsVnSNjN0ABNuHVBCpzqABae', 'frontdesk',
+        '["customer_add","reservation_manage","checkin_manage","room_change","billing","customer_query"]', NOW());
+-- 默认前台账号: front1 / admin123

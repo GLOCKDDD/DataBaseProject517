@@ -156,10 +156,11 @@ function openAdjustDialog(customer) {
 
 async function handleAdjust() {
   try {
-    await customerService.update(currentCustomer.value.customer_id, {
-      membership_level: adjustForm.membership_level,
-      points: adjustForm.points
-    })
+    await customerService.setMembership(
+      currentCustomer.value.customer_id,
+      adjustForm.membership_level,
+      adjustForm.points
+    )
     ElMessage.success('调整成功')
     adjustVisible.value = false
     loadData()

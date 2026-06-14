@@ -71,8 +71,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { roomTypeService } from '@/api/services'
-import { db } from '@/api/mock'
+import { roomTypeService, roomService } from '@/api/services'
 import { positiveNumberValidator, positiveIntValidator } from '@/utils/validators'
 import { ElMessage } from 'element-plus'
 
@@ -101,9 +100,9 @@ onMounted(() => {
   loadData()
 })
 
-function loadData() {
-  list.value = db.getTable('room_types')
-  const rooms = db.getTable('rooms')
+async function loadData() {
+  list.value = await roomTypeService.getList()
+  const rooms = await roomService.getList({})
   const counts = {}
   rooms.forEach(r => {
     counts[r.type_id] = (counts[r.type_id] || 0) + 1

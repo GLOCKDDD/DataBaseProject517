@@ -1,44 +1,40 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { db } from '@/api/mock'
+import http from '@/api/http'
 
 export const useAuthStore = defineStore('auth', () => {
-  // 当前登录用户信息
+  // 从 sessionStorage 恢复登录状态（刷新页面不丢失）
   const currentUser = ref(JSON.parse(sessionStorage.getItem('currentUser') || 'null'))
 
-  // 是否已登录
   const isLoggedIn = computed(() => !!currentUser.value)
 
-  // 登录
-  function login(username, password) {
-    const users = db.getTable('users')
-    const user = users.find(u => u.username === username && u.password_hash === password)
-    if (!user) {
-      return { success: false, message: '用户名或密码错误' }
-    }
-    // 更新最后登录时间
-    user.last_login = new Date().toISOString()
-    db.updateRecord('users', user.user_id, { last_login: user.last_login })
+  // 登录：调用后端 /api/user/login，后端返回 { user: {...} }
+  async function login(username, password) {
+    try {
+      const data = await http.post('/user/login', { username, password })
+      // 后端返回 Map，user 字段包含用户对象
+      const userInfo = data?.user ?? data
+      if (!userInfo) return { success: false, message: '登录失败，未获取到用户信息' }
 
-    const userInfo = { ...user }
-    delete userInfo.password_hash // 不在前端存储密码
-    currentUser.value = userInfo
-    sessionStorage.setItem('currentUser', JSON.stringify(userInfo))
-    return { success: true, user: userInfo }
+      currentUser.value = userInfo
+      sessionStorage.setItem('currentUser', JSON.stringify(userInfo))
+      return { success: true, user: userInfo }
+    } catch (e) {
+      return { success: false, message: e.message || '用户名或密码错误' }
+    }
   }
 
-  // 登出
   function logout() {
     currentUser.value = null
     sessionStorage.removeItem('currentUser')
   }
 
-  // 检查是否有某操作权限
+  // 权限检查：admin 拥有全部权限，前台人员按 permissions 字段判断
   function hasPermission(perm) {
     if (!currentUser.value) return false
-    if (currentUser.value.role === 'admin') return true // 管理员拥有全部权限
+    if (currentUser.value.role === 'admin') return true
     const perms = currentUser.value.permissions
-    if (!perms) return true // 未设置权限则默认允许前台功能
+    if (!perms) return true
     try {
       const permList = typeof perms === 'string' ? JSON.parse(perms) : perms
       return permList.includes(perm)

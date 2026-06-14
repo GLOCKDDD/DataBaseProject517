@@ -43,6 +43,9 @@ public class CheckinServiceImpl extends ServiceImpl<CheckinMapper, Checkin> impl
     @Autowired
     private CustomerMapper customerMapper;
 
+    @Autowired
+    private com.hotel.mapper.RoomTypeMapper roomTypeMapper;
+
     /**
      * 办理入住（关联预订或直接入住）
      * 流程：
@@ -172,5 +175,55 @@ public class CheckinServiceImpl extends ServiceImpl<CheckinMapper, Checkin> impl
         LambdaQueryWrapper<CheckinGuest> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(CheckinGuest::getCheckinId, checkinId);
         return checkinGuestMapper.selectList(wrapper);
+    }
+
+    @Override
+    public List<Map<String, Object>> listCheckinsFull(String status) {
+        LambdaQueryWrapper<Checkin> wrapper = new LambdaQueryWrapper<>();
+        if (status != null && !status.isEmpty()) {
+            wrapper.eq(Checkin::getStatus, status);
+        }
+        wrapper.orderByDesc(Checkin::getCheckinTime);
+        List<Checkin> checkins = checkinMapper.selectList(wrapper);
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Checkin checkin : checkins) {
+            Map<String, Object> item = new java.util.HashMap<>();
+            item.put("checkin_id", checkin.getCheckinId());
+            item.put("reservation_id", checkin.getReservationId());
+            item.put("room_id", checkin.getRoomId());
+            item.put("checkin_time", checkin.getCheckinTime());
+            item.put("checkout_time", checkin.getCheckoutTime());
+            item.put("status", checkin.getStatus());
+            Room room = roomMapper.selectById(checkin.getRoomId());
+            if (room != null) {
+                item.put("room_number", room.getRoomNumber());
+                com.hotel.entity.RoomType roomType = roomTypeMapper.selectById(room.getTypeId());
+                if (roomType != null) {
+                    item.put("room_type_name", roomType.getTypeName());
+                    item.put("base_price", roomType.getBasePrice());
+                }
+            }
+            LambdaQueryWrapper<CheckinGuest> gw = new LambdaQueryWrapper<>();
+            gw.eq(CheckinGuest::getCheckinId, checkin.getCheckinId());
+            List<CheckinGuest> guests = checkinGuestMapper.selectList(gw);
+            List<Map<String, Object>> guestList = new java.util.ArrayList<>();
+            for (CheckinGuest guest : guests) {
+                Map<String, Object> g = new java.util.HashMap<>();
+                g.put("guest_id", guest.getGuestId());
+                g.put("customer_id", guest.getCustomerId());
+                g.put("is_primary", guest.getIsPrimary());
+                Customer customer = customerMapper.selectById(guest.getCustomerId());
+                if (customer != null) {
+                    g.put("customer_name", customer.getName());
+                    if (Integer.valueOf(1).equals(guest.getIsPrimary())) {
+                        item.put("primary_customer_level", customer.getMembershipLevel());
+                    }
+                }
+                guestList.add(g);
+            }
+            item.put("guests", guestList);
+            result.add(item);
+        }
+        return result;
     }
 }

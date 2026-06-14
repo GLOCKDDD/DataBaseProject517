@@ -1,5 +1,6 @@
 package com.hotel.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.hotel.entity.Bill;
 import com.hotel.entity.dto.CheckoutDTO;
@@ -11,18 +12,17 @@ import java.util.Map;
  */
 public interface BillService extends IService<Bill> {
 
-    /**
-     * 办理结账（自动计算费用、更新积分、房态、预订状态）
-     */
     Map<String, Object> createBill(CheckoutDTO dto);
 
-    /**
-     * 查询账单详情
-     */
     Bill getBillDetail(Integer billId);
 
-    /**
-     * 根据入住登记编号查询账单
-     */
     Bill getBillByCheckinId(Integer checkinId);
+
+    IPage<Bill> listBills(int pageNum, int pageSize);
+
+    /** 含房间号、房型、操作员的富化账单列表 */
+    IPage<Map<String, Object>> listBillsFull(int pageNum, int pageSize);
+
+    /** 含入住信息、宾客、房间信息的富化账单详情 */
+    Map<String, Object> getBillDetailFull(Integer billId);
 }

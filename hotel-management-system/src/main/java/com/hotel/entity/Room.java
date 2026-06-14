@@ -1,6 +1,7 @@
 package com.hotel.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -31,4 +32,8 @@ public class Room {
 
     /** 备注 */
     private String remark;
+
+    /** 房型名称，非数据库字段，查询时由服务层填充 */
+    @TableField(exist = false)
+    private String typeName;
 }

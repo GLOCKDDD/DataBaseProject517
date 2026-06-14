@@ -33,9 +33,9 @@ public interface RoomService extends IService<Room> {
     List<Room> getFreeRoomsByType(Integer typeId);
 
     /**
-     * 分页查询房间（支持按状态、楼层、类型筛选）
+     * 分页查询房间（支持按状态、楼层、类型、房间号关键字筛选）
      */
-    IPage<Room> searchRooms(String status, String floor, Integer typeId, int pageNum, int pageSize);
+    IPage<Room> searchRooms(String status, String floor, Integer typeId, String keyword, int pageNum, int pageSize);
 
     /**
      * 获取房态概览统计

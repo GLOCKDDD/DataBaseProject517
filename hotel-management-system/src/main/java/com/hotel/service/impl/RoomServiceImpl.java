@@ -114,10 +114,10 @@ public class RoomServiceImpl extends ServiceImpl<RoomMapper, Room> implements Ro
     }
 
     /**
-     * 分页查询房间（支持按状态、楼层、类型筛选）
+     * 分页查询房间（支持按状态、楼层、类型、房间号关键字筛选）
      */
     @Override
-    public IPage<Room> searchRooms(String status, String floor, Integer typeId, int pageNum, int pageSize) {
+    public IPage<Room> searchRooms(String status, String floor, Integer typeId, String keyword, int pageNum, int pageSize) {
         Page<Room> page = new Page<>(pageNum, pageSize);
         LambdaQueryWrapper<Room> wrapper = new LambdaQueryWrapper<>();
 
@@ -130,8 +130,22 @@ public class RoomServiceImpl extends ServiceImpl<RoomMapper, Room> implements Ro
         if (typeId != null) {
             wrapper.eq(Room::getTypeId, typeId);
         }
+        if (keyword != null && !keyword.isEmpty()) {
+            wrapper.like(Room::getRoomNumber, keyword);
+        }
         wrapper.orderByAsc(Room::getRoomNumber);
-        return roomMapper.selectPage(page, wrapper);
+        IPage<Room> result = roomMapper.selectPage(page, wrapper);
+
+        // 填充房型名称
+        for (Room room : result.getRecords()) {
+            if (room.getTypeId() != null) {
+                RoomType rt = roomTypeMapper.selectById(room.getTypeId());
+                if (rt != null) {
+                    room.setTypeName(rt.getTypeName());
+                }
+            }
+        }
+        return result;
     }
 
     /**

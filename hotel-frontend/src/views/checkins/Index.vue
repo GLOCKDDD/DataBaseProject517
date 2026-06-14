@@ -146,7 +146,6 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { checkinService, customerService, roomTypeService, roomService, reservationService } from '@/api/services'
-import { db } from '@/api/mock'
 import { formatDateTime, CHECKIN_STATUS_LIST, CHECKIN_STATUS_TYPE, MEMBER_LEVEL_TYPE } from '@/utils/helpers'
 import { ElMessage } from 'element-plus'
 import { Search, Delete } from '@element-plus/icons-vue'
@@ -213,13 +212,13 @@ async function searchCustomer() {
   form.guests[0].customer_id = customer.customer_id
   form.guests[0].is_primary = true
 
-  const reservations = db.getTable('reservations').filter(
-    r => r.customer_id === customer.customer_id && r.status === '已确认'
-  )
-  matchedReservations.value = reservations
+  matchedReservations.value = await reservationService.getList({
+    status: '已确认',
+    customer_id: customer.customer_id
+  })
 
-  if (reservations.length > 0) {
-    ElMessage.info(`找到${reservations.length}条已确认预订`)
+  if (matchedReservations.value.length > 0) {
+    ElMessage.info(`找到${matchedReservations.value.length}条已确认预订`)
   }
 }
 
@@ -236,9 +235,9 @@ async function autoFillGuest(idx) {
   }
 }
 
-function loadAvailableRooms() {
+async function loadAvailableRooms() {
   if (selectedTypeId.value) {
-    availableRooms.value = roomService.getAvailableRooms(selectedTypeId.value)
+    availableRooms.value = await roomService.getAvailableRooms(selectedTypeId.value)
   } else {
     availableRooms.value = []
   }
@@ -269,10 +268,15 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null')
     await checkinService.create({
       reservation_id: form.reservation_id || null,
       room_id: form.room_id,
-      guests: form.guests
+      created_by: currentUser?.userId ?? 1,
+      guests: form.guests.map(g => ({
+        customer_id: g.customer_id,
+        is_primary: g.is_primary ? 1 : 0
+      }))
     })
     ElMessage.success('入住办理成功')
     dialogVisible.value = false

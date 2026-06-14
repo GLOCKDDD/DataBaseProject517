@@ -65,17 +65,18 @@ public class RoomController {
     }
 
     /**
-     * 分页查询客房（支持按状态、楼层、类型筛选）
-     * GET /api/room/list?status=空闲&floor=1&typeId=1&pageNum=1&pageSize=10
+     * 分页查询客房（支持按状态、楼层、类型、房间号关键字筛选）
+     * GET /api/room/list?status=空闲&floor=1&typeId=1&keyword=101&pageNum=1&pageSize=10
      */
     @GetMapping("/list")
     public Result<?> listRooms(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String floor,
             @RequestParam(required = false) Integer typeId,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "10") int pageSize) {
-        IPage<Room> result = roomService.searchRooms(status, floor, typeId, pageNum, pageSize);
+        IPage<Room> result = roomService.searchRooms(status, floor, typeId, keyword, pageNum, pageSize);
         return Result.success(result);
     }
 

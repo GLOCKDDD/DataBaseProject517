@@ -113,8 +113,8 @@ async function handleLogin() {
   if (!valid) return
 
   loading.value = true
-  setTimeout(() => {
-    const result = authStore.login(form.username, form.password)
+  setTimeout(async () => {
+    const result = await authStore.login(form.username, form.password)
     if (result.success) {
       ElMessage.success(`欢迎回来，${result.user.username}！`)
       router.push('/dashboard')

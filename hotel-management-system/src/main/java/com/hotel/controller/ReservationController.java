@@ -54,7 +54,7 @@ public class ReservationController {
             @RequestParam(required = false) Integer customerId,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "10") int pageSize) {
-        IPage<Reservation> result = reservationService.searchReservations(status, customerId, pageNum, pageSize);
+        IPage<Map<String, Object>> result = reservationService.searchReservations(status, customerId, pageNum, pageSize);
         return Result.success(result);
     }
 

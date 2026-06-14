@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.hotel.entity.Customer;
 import com.hotel.entity.dto.CustomerDTO;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * 客户信息服务接口
  */
@@ -29,4 +32,9 @@ public interface CustomerService extends IService<Customer> {
      * 更新会员等级
      */
     void updateMembership(Integer customerId, String level, Integer points);
+
+    /**
+     * 查询客户历史入住记录（含房间号）
+     */
+    List<Map<String, Object>> getCustomerCheckins(Integer customerId);
 }

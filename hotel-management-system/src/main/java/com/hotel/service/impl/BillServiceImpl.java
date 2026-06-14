@@ -16,7 +16,11 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 /**
  * 结账服务实现类
@@ -42,6 +46,9 @@ public class BillServiceImpl extends ServiceImpl<BillMapper, Bill> implements Bi
 
     @Autowired
     private ReservationMapper reservationMapper;
+
+    @Autowired
+    private com.hotel.mapper.UserMapper userMapper;
 
     /**
      * 办理结账（自动计算费用、更新积分、房态、预订状态）
@@ -118,7 +125,7 @@ public class BillServiceImpl extends ServiceImpl<BillMapper, Bill> implements Bi
         BigDecimal discount;
         if ("VIP".equals(membershipLevel)) {
             discount = new BigDecimal("0.9");
-        } else if ("金卡".equals(membershipLevel)) {
+        } else if ("贵宾".equals(membershipLevel)) {
             discount = new BigDecimal("0.8");
         } else {
             discount = new BigDecimal("1.0");
@@ -202,5 +209,104 @@ public class BillServiceImpl extends ServiceImpl<BillMapper, Bill> implements Bi
         LambdaQueryWrapper<Bill> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Bill::getCheckinId, checkinId);
         return baseMapper.selectOne(wrapper);
+    }
+
+    /**
+     * 查询账单列表（分页）
+     */
+    @Override
+    public IPage<Bill> listBills(int pageNum, int pageSize) {
+        Page<Bill> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<Bill> wrapper = new LambdaQueryWrapper<>();
+        wrapper.orderByDesc(Bill::getPaymentTime);
+        return baseMapper.selectPage(page, wrapper);
+    }
+
+    /**
+     * 富化账单列表（含房间号、房型、操作员）
+     */
+    @Override
+    public IPage<Map<String, Object>> listBillsFull(int pageNum, int pageSize) {
+        Page<Bill> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<Bill> wrapper = new LambdaQueryWrapper<>();
+        wrapper.orderByDesc(Bill::getPaymentTime);
+        IPage<Bill> billPage = baseMapper.selectPage(page, wrapper);
+
+        Page<Map<String, Object>> resultPage = new Page<>(billPage.getCurrent(), billPage.getSize(), billPage.getTotal());
+        List<Map<String, Object>> records = new ArrayList<>();
+        for (Bill bill : billPage.getRecords()) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("bill_id", bill.getBillId());
+            item.put("checkin_id", bill.getCheckinId());
+            item.put("total_amount", bill.getTotalAmount());
+            item.put("payment_time", bill.getPaymentTime());
+            item.put("details", bill.getDetails());
+            item.put("created_by", bill.getCreatedBy());
+
+            Checkin checkin = checkinMapper.selectById(bill.getCheckinId());
+            if (checkin != null) {
+                Room room = roomMapper.selectById(checkin.getRoomId());
+                if (room != null) {
+                    item.put("room_number", room.getRoomNumber());
+                    RoomType rt = roomTypeMapper.selectById(room.getTypeId());
+                    item.put("room_type_name", rt != null ? rt.getTypeName() : "");
+                }
+            }
+
+            com.hotel.entity.User operator = bill.getCreatedBy() != null ? userMapper.selectById(bill.getCreatedBy()) : null;
+            item.put("operator", operator != null ? operator.getUsername() : "");
+            records.add(item);
+        }
+        resultPage.setRecords(records);
+        return resultPage;
+    }
+
+    /**
+     * 富化账单详情（含入住信息、宾客、房间信息）
+     */
+    @Override
+    public Map<String, Object> getBillDetailFull(Integer billId) {
+        Bill bill = baseMapper.selectById(billId);
+        if (bill == null) {
+            throw new com.hotel.util.BusinessException("账单不存在");
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("bill_id", bill.getBillId());
+        result.put("checkin_id", bill.getCheckinId());
+        result.put("total_amount", bill.getTotalAmount());
+        result.put("payment_time", bill.getPaymentTime());
+        result.put("details", bill.getDetails());
+
+        Checkin checkin = checkinMapper.selectById(bill.getCheckinId());
+        if (checkin != null) {
+            Map<String, Object> checkinMap = new HashMap<>();
+            checkinMap.put("checkin_time", checkin.getCheckinTime());
+            checkinMap.put("checkout_time", checkin.getCheckoutTime());
+            result.put("checkin", checkinMap);
+
+            Room room = roomMapper.selectById(checkin.getRoomId());
+            if (room != null) {
+                result.put("room_number", room.getRoomNumber());
+                RoomType rt = roomTypeMapper.selectById(room.getTypeId());
+                result.put("room_type_name", rt != null ? rt.getTypeName() : "");
+            }
+
+            LambdaQueryWrapper<CheckinGuest> gw = new LambdaQueryWrapper<>();
+            gw.eq(CheckinGuest::getCheckinId, checkin.getCheckinId());
+            List<CheckinGuest> guests = checkinGuestMapper.selectList(gw);
+            List<Map<String, Object>> guestList = new ArrayList<>();
+            for (CheckinGuest g : guests) {
+                Map<String, Object> gm = new HashMap<>();
+                Customer c = customerMapper.selectById(g.getCustomerId());
+                gm.put("customer_id", g.getCustomerId());
+                gm.put("customer_name", c != null ? c.getName() : "");
+                gm.put("is_primary", g.getIsPrimary());
+                guestList.add(gm);
+            }
+            result.put("guests", guestList);
+        } else {
+            result.put("guests", new ArrayList<>());
+        }
+        return result;
     }
 }

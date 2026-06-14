@@ -46,10 +46,15 @@
         <el-table-column prop="created_at" label="录入时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openDialog(row)">编辑</el-button>
             <el-button type="primary" link size="small" @click="viewHistory(row)">历史记录</el-button>
+            <el-popconfirm title="确定删除该客户信息吗？" @confirm="handleDelete(row)">
+              <template #reference>
+                <el-button type="danger" link size="small">删除</el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -117,7 +122,6 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { customerService } from '@/api/services'
-import { db } from '@/api/mock'
 import { formatDateTime, MEMBER_LEVEL_TYPE, CHECKIN_STATUS_TYPE } from '@/utils/helpers'
 import { phoneValidator, idNumberValidator } from '@/utils/validators'
 import { ElMessage } from 'element-plus'
@@ -195,6 +199,7 @@ async function handleSubmit() {
   try {
     if (isEdit.value) {
       await customerService.update(editId.value, {
+        id_number: form.id_number,
         name: form.name,
         phone: form.phone,
         address: form.address,
@@ -203,6 +208,20 @@ async function handleSubmit() {
       })
       ElMessage.success('更新成功')
     } else {
+      // 先检查身份证号是否已存在，防止后端 upsert 覆盖已有客户数据
+      // getByIdNumber 查不到时后端返回 404，需单独捕获，避免触发 axios 拦截器的错误提示
+      let existing = null
+      try {
+        existing = await customerService.getByIdNumber(form.id_number, true)
+      } catch {
+        // 404 表示不存在，属于正常情况，忽略即可
+        existing = null
+      }
+      if (existing) {
+        ElMessage.error(`身份证号已存在（${existing.name}），如需修改请使用编辑功能`)
+        submitting.value = false
+        return
+      }
       await customerService.create({ ...form })
       ElMessage.success('录入成功')
     }
@@ -215,13 +234,18 @@ async function handleSubmit() {
   }
 }
 
+async function handleDelete(customer) {
+  try {
+    await customerService.remove(customer.customer_id)
+    ElMessage.success('删除成功')
+    loadCustomers()
+  } catch (e) {
+    ElMessage.error(e.message || '删除失败')
+  }
+}
+
 async function viewHistory(customer) {
-  const history = await customerService.getHistory(customer.customer_id)
-  const rooms = db.getTable('rooms')
-  historyData.value = history.map(h => ({
-    ...h,
-    room_number: rooms.find(r => r.room_id === h.room_id)?.room_number || '未知'
-  }))
+  historyData.value = await customerService.getHistory(customer.customer_id)
   historyVisible.value = true
 }
 </script>

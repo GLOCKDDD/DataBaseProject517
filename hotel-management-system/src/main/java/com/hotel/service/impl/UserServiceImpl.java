@@ -70,6 +70,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      */
     @Override
     public void createUser(UserDTO dto) {
+        if (dto.getUsername() == null || dto.getUsername().trim().isEmpty()) {
+            throw new BusinessException("用户名不能为空");
+        }
+        if (dto.getPassword() == null || dto.getPassword().trim().isEmpty()) {
+            throw new BusinessException("密码不能为空");
+        }
+        if (dto.getRole() == null || dto.getRole().trim().isEmpty()) {
+            throw new BusinessException("角色不能为空");
+        }
         // 校验用户名唯一性
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(User::getUsername, dto.getUsername());

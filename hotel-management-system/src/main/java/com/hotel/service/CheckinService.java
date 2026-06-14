@@ -33,4 +33,9 @@ public interface CheckinService extends IService<Checkin> {
      * 获取入住宾客列表
      */
     List<CheckinGuest> getGuests(Integer checkinId);
+
+    /**
+     * 获取富化入住列表（含房间号、房型、宾客信息）
+     */
+    List<Map<String, Object>> listCheckinsFull(String status);
 }

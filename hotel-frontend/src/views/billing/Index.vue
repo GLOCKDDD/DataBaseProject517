@@ -165,8 +165,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { billingService, checkinService } from '@/api/services'
-import { db } from '@/api/mock'
-import { formatDateTime, daysBetween, MEMBER_LEVEL_TYPE, MEMBER_DISCOUNTS } from '@/utils/helpers'
+import { formatDateTime, daysBetween, MEMBER_LEVEL_TYPE } from '@/utils/helpers'
 import { ElMessage } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 
@@ -197,31 +196,23 @@ async function loadData() {
 }
 
 function estimateFee(checkin) {
-  const nights = daysBetween(checkin.checkin_time, new Date())
-  const guests = checkin.guests || []
-  const primaryGuest = guests.find(g => g.is_primary)
-  const customers = db.getTable('customers')
-  const customer = primaryGuest ? customers.find(c => c.customer_id === primaryGuest.customer_id) : null
-  const discount = customer ? (MEMBER_DISCOUNTS[customer.membership_level] || 1.0) : 1.0
-  return (nights * checkin.base_price * discount).toFixed(2)
+  const nights = Math.max(1, daysBetween(checkin.checkin_time, new Date()))
+  return (nights * (checkin.base_price || 0)).toFixed(2)
 }
 
 function openCheckout(checkin) {
   currentCheckin.value = checkin
-  const nights = daysBetween(checkin.checkin_time, new Date())
-
-  const guests = checkin.guests || []
-  const primaryGuest = guests.find(g => g.is_primary) || guests[0]
-  const customers = db.getTable('customers')
-  const customer = primaryGuest ? customers.find(c => c.customer_id === primaryGuest.customer_id) : null
-  const discount = customer ? (MEMBER_DISCOUNTS[customer.membership_level] || 1.0) : 1.0
-  const roomFee = nights * checkin.base_price * discount
+  const nights = Math.max(1, daysBetween(checkin.checkin_time, new Date()))
+  const level = checkin.primary_customer_level || null
+  const discountMap = { 'VIP': 0.9, '贵宾': 0.8 }
+  const discount = discountMap[level] || 1.0
+  const roomFee = nights * (checkin.base_price || 0) * discount
 
   feeDetail.value = {
     nights,
-    base_price: checkin.base_price,
+    base_price: checkin.base_price || 0,
     discount,
-    customer_level: customer?.membership_level || null,
+    customer_level: level,
     room_fee: Math.round(roomFee * 100) / 100
   }
 
@@ -232,9 +223,10 @@ function openCheckout(checkin) {
 async function handleCheckout() {
   submitting.value = true
   try {
+    const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null')
     await billingService.checkout(
       currentCheckin.value.checkin_id,
-      extraCharges.value.filter(c => c.name && c.amount > 0)
+      currentUser?.userId ?? 1
     )
     ElMessage.success('结账成功')
     checkoutVisible.value = false
@@ -247,7 +239,25 @@ async function handleCheckout() {
 }
 
 async function viewDetail(billId) {
-  billDetail.value = await billingService.getDetail(billId)
+  const bill = await billingService.getDetail(billId)
+  if (bill) {
+    if (typeof bill.details === 'string') {
+      try {
+        const d = JSON.parse(bill.details)
+        bill.details = {
+          nights: d['入住天数'],
+          base_price: d['基础单价'],
+          discount: d['折扣'],
+          room_fee: d['房费小计'],
+          extra_charges: d['附加费用'] || []
+        }
+      } catch(e) {
+        bill.details = {}
+      }
+    }
+    bill.guests = bill.guests || []
+  }
+  billDetail.value = bill
   detailVisible.value = true
 }
 </script>

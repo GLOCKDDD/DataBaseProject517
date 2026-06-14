@@ -2,21 +2,18 @@ package com.hotel.entity.dto;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
-
 /**
  * 用户创建/修改请求DTO
+ * username 和 role 对于部分更新（如仅更新权限）可以为空，服务层负责校验
  */
 @Data
 public class UserDTO {
     private Integer userId;
 
-    @NotBlank(message = "用户名不能为空")
     private String username;
 
     private String password;
 
-    @NotBlank(message = "角色不能为空")
     private String role;
 
     private String permissions;

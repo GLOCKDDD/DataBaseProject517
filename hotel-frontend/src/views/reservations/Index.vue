@@ -186,9 +186,13 @@ onMounted(async () => {
 
 async function loadData() {
   const params = {}
-  if (searchKeyword.value) params.keyword = searchKeyword.value
   if (searchStatus.value) params.status = searchStatus.value
-  list.value = await reservationService.getList(params)
+  let data = await reservationService.getList(params)
+  if (searchKeyword.value) {
+    const kw = searchKeyword.value.toLowerCase()
+    data = data.filter(r => r.customer_name?.toLowerCase().includes(kw))
+  }
+  list.value = data
 }
 
 function openDialog() {
@@ -214,7 +218,7 @@ async function handleSubmit() {
   try {
     await reservationService.create({
       customer_id: form.customer_id,
-      created_by: authStore.currentUser.user_id,
+      created_by: authStore.currentUser?.userId,
       expected_checkin: new Date(form.expected_checkin).toISOString(),
       expected_checkout: new Date(form.expected_checkout).toISOString(),
       guest_count: form.guest_count,

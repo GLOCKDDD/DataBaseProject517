@@ -128,28 +128,34 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { db } from '@/api/mock'
+import { roomService, roomTypeService, reservationService, checkinService, customerService } from '@/api/services'
 import { formatDateTime, CHECKIN_STATUS_TYPE } from '@/utils/helpers'
 
 const rooms = ref([])
 const reservations = ref([])
 const checkins = ref([])
+const customerTotal = ref(0)
 const todayStr = new Date().toISOString().slice(0, 10)
 
 onMounted(() => {
   loadData()
 })
 
-function loadData() {
-  const allRooms = db.getTable('rooms')
-  const types = db.getTable('room_types')
-  rooms.value = allRooms.map(r => ({
+async function loadData() {
+  const [roomList, types, resList, checkinList, customerPage] = await Promise.all([
+    roomService.getList({ pageSize: 200 }),
+    roomTypeService.getList(),
+    reservationService.getList({}),
+    checkinService.getList({}),
+    customerService.getList({})
+  ])
+  rooms.value = (roomList || []).map(r => ({
     ...r,
-    type_name: types.find(t => t.type_id === r.type_id)?.type_name || ''
+    type_name: (types || []).find(t => t.type_id === r.type_id)?.type_name || ''
   }))
-
-  reservations.value = db.getTable('reservations')
-  checkins.value = db.getTable('checkins')
+  reservations.value = resList || []
+  checkins.value = checkinList || []
+  customerTotal.value = (customerPage || []).length
 }
 
 // 统计卡片
@@ -183,7 +189,7 @@ const statCards = computed(() => [
   },
   {
     title: '总客户数',
-    value: db.getTable('customers').length,
+    value: customerTotal.value,
     sub: '已注册',
     icon: 'UserFilled',
     iconBg: 'linear-gradient(135deg, #F5E6FF, #D3ADF7)',
@@ -223,18 +229,14 @@ const businessMetrics = computed(() => {
 
 // 最近入住
 const recentCheckins = computed(() => {
-  const customers = db.getTable('customers')
-  const guests = db.getTable('checkin_guests')
-  return checkins.value
+  return [...checkins.value]
     .sort((a, b) => new Date(b.checkin_time) - new Date(a.checkin_time))
     .slice(0, 5)
     .map(c => {
-      const room = rooms.value.find(r => r.room_id === c.room_id)
-      const guest = guests.find(g => g.checkin_id === c.checkin_id)
-      const customer = guest ? customers.find(ct => ct.customer_id === guest.customer_id) : null
+      const primaryGuest = (c.guests || []).find(g => g.is_primary) || (c.guests || [])[0]
       return {
-        room_number: room?.room_number || '未知',
-        guest_name: customer?.name || '未知',
+        room_number: c.room_number || '未知',
+        guest_name: primaryGuest?.customer_name || '未知',
         checkin_time: formatDateTime(c.checkin_time),
         status: c.status
       }

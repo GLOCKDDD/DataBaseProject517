@@ -40,4 +40,13 @@ public class RoomChangeController {
         List<RoomChange> changes = roomChangeService.getChangesByCheckin(checkinId);
         return Result.success(changes);
     }
+
+    /**
+     * 查询所有换房记录
+     * GET /api/roomchange/listall
+     */
+    @GetMapping("/listall")
+    public Result<?> listAllChanges() {
+        return Result.success(roomChangeService.listAllChanges());
+    }
 }
